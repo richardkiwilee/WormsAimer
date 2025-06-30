@@ -6,7 +6,7 @@ from PyQt5.QtCore import Qt, QPoint, QPointF
 from PyQt5.QtGui import QPainter, QPen, QColor
 import math
 
-LEFT_SPACE = 400
+LEFT_SPACE = 0
 
 class TransparentCanvas(QWidget):
     def __init__(self, parent=None):
@@ -257,84 +257,24 @@ class TransparentCanvas(QWidget):
 class AimerTool(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.initUI()
         self.oldPos = None
-        
-    def mousePressEvent(self, event):
-        # Only handle left button events
-        if event.button() == Qt.LeftButton:
-            if self.check_resize_edge(event.pos()):
-                self.resize_start_pos = event.globalPos()
-                self.resize_start_geometry = self.geometry()
-            else:
-                self.oldPos = event.globalPos()
-
-    def mouseMoveEvent(self, event):
-        if self.resize_start_pos is not None:
-            # Handle resizing
-            delta = event.globalPos() - self.resize_start_pos
-            new_geometry = self.resize_start_geometry
-            min_width = self.minimumWidth()
-            min_height = self.minimumHeight()
-            
-            if self.resize_edge & Qt.RightEdge:
-                new_width = max(min_width, self.resize_start_geometry.width() + delta.x())
-                new_geometry.setWidth(new_width)
-            if self.resize_edge & Qt.BottomEdge:
-                new_height = max(min_height, self.resize_start_geometry.height() + delta.y())
-                new_geometry.setHeight(new_height)
-            if self.resize_edge & Qt.LeftEdge:
-                new_width = max(min_width, self.resize_start_geometry.width() - delta.x())
-                if new_width != self.resize_start_geometry.width():
-                    new_geometry.setLeft(self.resize_start_geometry.right() - new_width)
-            if self.resize_edge & Qt.TopEdge:
-                new_height = max(min_height, self.resize_start_geometry.height() - delta.y())
-                if new_height != self.resize_start_geometry.height():
-                    new_geometry.setTop(self.resize_start_geometry.bottom() - new_height)
-            
-            self.setGeometry(new_geometry)
-        
-        elif self.oldPos:
-            # Handle window dragging
-            delta = event.globalPos() - self.oldPos
-            self.move(self.pos() + delta)
-            self.oldPos = event.globalPos()
-        else:
-            # Update cursor based on position
-            edge = self.check_resize_edge(event.pos())
-            if edge:
-                if edge == Qt.LeftEdge | Qt.TopEdge or edge == Qt.RightEdge | Qt.BottomEdge:
-                    self.setCursor(Qt.SizeFDiagCursor)
-                elif edge == Qt.RightEdge | Qt.TopEdge or edge == Qt.LeftEdge | Qt.BottomEdge:
-                    self.setCursor(Qt.SizeBDiagCursor)
-                elif edge & (Qt.LeftEdge | Qt.RightEdge):
-                    self.setCursor(Qt.SizeHorCursor)
-                elif edge & (Qt.TopEdge | Qt.BottomEdge):
-                    self.setCursor(Qt.SizeVerCursor)
-            else:
-                self.setCursor(Qt.ArrowCursor)
+        self.resize_edge = None
+        self.resize_start_pos = None
+        self.resize_start_geometry = None
+        self.resize_edge_width = 8
+        self.initUI()
         
     def initUI(self):
         # Set window flags for resizable frameless window
         self.setWindowFlags(
             Qt.Window |
             Qt.WindowStaysOnTopHint |
-            Qt.FramelessWindowHint |
-            Qt.WindowMaximizeButtonHint |
-            Qt.WindowSystemMenuHint |
-            Qt.WindowMinMaxButtonsHint  # Enable minimize/maximize buttons
+            Qt.FramelessWindowHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         
         # Enable resizing
         self.setMouseTracking(True)
-        self.resize_edge = None
-        self.resize_start_pos = None
-        self.resize_start_geometry = None
-        self.resize_edge_width = 8  # Width of the resize area
-        
-        # Enable resizing
-        self.setMinimumSize(1440, 900)  # Set minimum window size
         
         # Create main widget and layout
         main_widget = QWidget()
@@ -541,14 +481,14 @@ class AimerTool(QMainWindow):
         splitter.setStretchFactor(1, 1)  # Canvas gets all extra space
         
         # Set window size based on desired canvas size
-        canvas_width = 2560
-        canvas_height = 1440
+        canvas_width = 3240
+        canvas_height = 1800
         window_width = controls_widget.width() + canvas_width
         window_height = canvas_height
         
         # Set minimum sizes
-        self.setMinimumWidth(controls_widget.width() + 2560)  # Controls width plus minimum canvas width
-        self.setMinimumHeight(1440)
+        self.setMinimumWidth(controls_widget.width())  # Controls width plus minimum canvas width
+        self.setMinimumHeight(window_height)
         
         # Store layouts as instance variables
         self.main_layout = main_layout
@@ -571,6 +511,57 @@ class AimerTool(QMainWindow):
         # Initialize canvas parameters
         self.update_parameters()
         
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            # 检查是否点击在控制区域
+            if self.controls_widget.geometry().contains(event.pos()):
+                self.oldPos = event.globalPos()
+            else:
+                # 如果不在控制区域，检查是否是调整大小
+                edge = self.check_resize_edge(event.pos())
+                if edge:
+                    self.resize_start_pos = event.globalPos()
+                    self.resize_edge = edge
+                    self.resize_start_geometry = self.geometry()
+                    
+    def mouseMoveEvent(self, event):
+        if self.resize_start_pos is not None and self.canvas.isVisible():
+            # 处理窗口调整大小
+            delta = event.globalPos() - self.resize_start_pos
+            new_geometry = self.resize_start_geometry
+            min_width = self.minimumWidth()
+            min_height = self.minimumHeight()
+            
+            if self.resize_edge & Qt.RightEdge:
+                new_width = max(min_width, self.resize_start_geometry.width() + delta.x())
+                new_geometry.setWidth(new_width)
+            if self.resize_edge & Qt.BottomEdge:
+                new_height = max(min_height, self.resize_start_geometry.height() + delta.y())
+                new_geometry.setHeight(new_height)
+            
+            self.setGeometry(new_geometry)
+        
+        elif self.oldPos:
+            # 处理窗口拖动
+            delta = event.globalPos() - self.oldPos
+            self.move(self.pos() + delta)
+            self.oldPos = event.globalPos()
+        
+        else:
+            # 更新鼠标光标形状
+            if not self.canvas.isVisible():
+                self.setCursor(Qt.ArrowCursor)
+            else:
+                edge = self.check_resize_edge(event.pos())
+                if edge == Qt.RightEdge:
+                    self.setCursor(Qt.SizeHorCursor)
+                elif edge == Qt.BottomEdge:
+                    self.setCursor(Qt.SizeVerCursor)
+                elif edge == (Qt.RightEdge | Qt.BottomEdge):
+                    self.setCursor(Qt.SizeFDiagCursor)
+                else:
+                    self.setCursor(Qt.ArrowCursor)
+            
     def mouseReleaseEvent(self, event):
         self.oldPos = None
         self.resize_start_pos = None
@@ -578,24 +569,17 @@ class AimerTool(QMainWindow):
         self.resize_start_geometry = None
         
     def check_resize_edge(self, pos):
-        # Check if the position is near any edge for resizing
+        # 如果canvas已经隐藏，不允许调整大小
+        if not self.canvas.isVisible():
+            return 0
+            
         edge = 0
-        # Don't resize from left edge where the controls are
+        # 只允许从右边和底部调整大小
         if pos.x() >= self.width() - self.resize_edge_width:
             edge |= Qt.RightEdge
-        if pos.y() <= self.resize_edge_width:
-            edge |= Qt.TopEdge
         if pos.y() >= self.height() - self.resize_edge_width:
             edge |= Qt.BottomEdge
-        
-        # Add corner detection
-        if edge & Qt.RightEdge:
-            if pos.y() <= self.resize_edge_width:
-                edge |= Qt.TopEdge
-            elif pos.y() >= self.height() - self.resize_edge_width:
-                edge |= Qt.BottomEdge
-        
-        self.resize_edge = edge
+            
         return edge
         
     def toggle_canvas(self):
@@ -610,27 +594,34 @@ class AimerTool(QMainWindow):
             # 获取控件栏的实际大小
             controls_size = self.controls_widget.sizeHint()
             # 调整窗口宽度为控件栏宽度，保持高度不变
-            new_width = controls_size.width() + 20  # 边框的额外空间
+            new_width = controls_size.width()  # 边框的额外空间
             
             # 保持当前位置不变，只改变宽度
-            self.setGeometry(current_geometry.x(), current_geometry.y(), 
-                            new_width, current_geometry.height())
+            print(current_geometry.x(), current_geometry.y(), new_width, current_geometry.height())
+            # 设置固定大小，禁止调整
+            self.setFixedSize(new_width, current_geometry.height())
         else:
             # 显示canvas
             self.canvas.show()
             self.toggle_canvas_button.setText('收起 Canvas')
             # 恢复之前的窗口状态，但保持当前位置
             if hasattr(self, 'last_window_geometry'):
-                self.setGeometry(current_geometry.x(), current_geometry.y(),
-                                self.last_window_geometry.width(), 
-                                self.last_window_geometry.height())
+                print(current_geometry.x(), current_geometry.y(), self.last_window_geometry.width(), self.last_window_geometry.height())
+                # 允许调整窗口大小
+                self.setMinimumSize(0, 0)
+                self.setMaximumSize(16777215, 16777215)  # QWIDGETSIZE_MAX
+                self.resize(self.last_window_geometry.width(),
+                          self.last_window_geometry.height())
             else:
                 # 如果没有保存的状态，使用默认大小但保持当前位置
                 default_width = self.controls_widget.width() + 2560
                 default_height = 1440
-                self.setGeometry(current_geometry.x(), current_geometry.y(),
-                                default_width, default_height)
-    
+                print(current_geometry.x(), current_geometry.y(), default_width, default_height)
+                # 允许调整窗口大小
+                self.setMinimumSize(0, 0)
+                self.setMaximumSize(16777215, 16777215)  # QWIDGETSIZE_MAX
+                self.resize(default_width, default_height)
+        
     def update_wind_label(self):
         value = self.wind_slider.value()
         direction = "←" if value < 0 else "→" if value > 0 else "-"

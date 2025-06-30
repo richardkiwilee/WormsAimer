@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QComboBox, QSlider, QSpinBox,
-                             QPushButton)
+                             QHBoxLayout, QLabel, QSlider, QSpinBox,
+                             QPushButton, QSplitter, QDesktopWidget)
 from PyQt5.QtCore import Qt, QPoint, QPointF
 from PyQt5.QtGui import QPainter, QPen, QColor
 import math
@@ -196,6 +196,13 @@ class AimerTool(QMainWindow):
                 border: 2px solid rgba(0, 0, 0, 100);
                 border-radius: 10px;
             }
+            QSplitter::handle {
+                background-color: rgba(100, 100, 100, 150);
+                margin: 1px;
+            }
+            QSplitter::handle:hover {
+                background-color: rgba(100, 100, 100, 200);
+            }
         """)
         main_widget.setObjectName("mainWidget")
         self.setCentralWidget(main_widget)
@@ -240,13 +247,14 @@ class AimerTool(QMainWindow):
         
         main_layout.addWidget(title_bar)
         
-        # Create content layout
-        content_layout = QHBoxLayout()
-        content_layout.setContentsMargins(10, 10, 10, 10)
-        content_layout.setSpacing(10)
+        # Create splitter
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(4)
+        main_layout.addWidget(splitter)
         
         # Left side - Transparent Canvas
         self.canvas = TransparentCanvas()
+        splitter.addWidget(self.canvas)
         
         # Right side - Controls
         controls_widget = QWidget()
@@ -259,19 +267,17 @@ class AimerTool(QMainWindow):
                 color: black;
                 font-weight: bold;
             }
-            QSpinBox, QComboBox, QSlider {
+            QSpinBox, QSlider {
                 background-color: rgba(255, 255, 255, 220);
                 border: 1px solid gray;
                 border-radius: 4px;
                 padding: 2px;
             }
         """)
+        controls_widget.setMinimumWidth(200)
+        controls_widget.setMaximumWidth(400)
         controls_layout = QVBoxLayout(controls_widget)
-        
-        # Resolution selector
-        res_label = QLabel('Canvas Resolution:')
-        self.res_combo = QComboBox()
-        self.res_combo.addItems(['1920x1440', '1600x900', '1366x768', '1280x720'])
+        splitter.addWidget(controls_widget)
         
         # Gravity control
         gravity_label = QLabel('Gravity (pixels/sec²):')
@@ -294,12 +300,15 @@ class AimerTool(QMainWindow):
         # Wind control
         wind_label = QLabel('Wind Direction and Power:')
         self.wind_slider = QSlider(Qt.Horizontal)
-        self.wind_slider.setRange(-100, 100)
+        self.wind_slider.setRange(-10, 10)
         self.wind_slider.setValue(0)
         
+        # Wind value label
+        self.wind_value_label = QLabel('Wind: 0')
+        self.wind_value_label.setAlignment(Qt.AlignCenter)
+        self.wind_slider.valueChanged.connect(self.update_wind_label)
+        
         # Add all controls to layout
-        controls_layout.addWidget(res_label)
-        controls_layout.addWidget(self.res_combo)
         controls_layout.addWidget(gravity_label)
         controls_layout.addWidget(self.gravity_spin)
         controls_layout.addWidget(velocity_label)
@@ -308,27 +317,24 @@ class AimerTool(QMainWindow):
         controls_layout.addWidget(self.radius_spin)
         controls_layout.addWidget(wind_label)
         controls_layout.addWidget(self.wind_slider)
+        controls_layout.addWidget(self.wind_value_label)
         controls_layout.addStretch()
         
-        # Add controls to content layout
-        content_layout.addWidget(self.canvas)
-        content_layout.addWidget(controls_widget)
-        
-        # Add content layout to main layout
-        main_layout.addLayout(content_layout)
+        # Set initial sizes for splitter
+        splitter.setStretchFactor(0, 1)  # Canvas gets all extra space
+        splitter.setStretchFactor(1, 0)  # Controls keep their size
         
         # Store layouts as instance variables
         self.main_layout = main_layout
-        self.content_layout = content_layout
         
         # Window settings
         self.setWindowTitle('Aimer Tool')
         
-        # Set initial size based on default resolution
-        self.update_canvas_size('1920x1440')
+        # Maximize window
+        screen = QDesktopWidget().availableGeometry()
+        self.setGeometry(screen)
         
         # Connect signals
-        self.res_combo.currentTextChanged.connect(self.update_canvas_size)
         self.gravity_spin.valueChanged.connect(self.update_parameters)
         self.velocity_spin.valueChanged.connect(self.update_parameters)
         self.radius_spin.valueChanged.connect(self.update_parameters)
@@ -337,13 +343,10 @@ class AimerTool(QMainWindow):
         # Initialize canvas parameters
         self.update_parameters()
         
-    def update_canvas_size(self, resolution):
-        width, height = map(int, resolution.split('x'))
-        self.canvas.setFixedSize(width, height)
-        
-        # Calculate the total window size based on canvas and controls
-        controls_width = 200  # Fixed width for controls panel
-        self.setFixedSize(width + controls_width + 20, height + 20)  # Add some padding
+    def update_wind_label(self):
+        value = self.wind_slider.value()
+        direction = "←" if value < 0 else "→" if value > 0 else "-"
+        self.wind_value_label.setText(f'Wind: {abs(value)} {direction}')
         
     def update_parameters(self):
         # Update canvas parameters

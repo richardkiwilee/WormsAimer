@@ -22,16 +22,24 @@ class TransparentCanvas(QWidget):
         # Initialize variables
         self.center_point = None
         self.current_point = None
+        self.last_angle = None  # Store last angle for helper lines
+        self.last_power = None  # Store last power for helper circle
         self.max_radius = None  # Will be set from main window
         self.gravity = 10      # Will be set from main window (pixels/sec^2)
         self.max_velocity = 100 # Will be set from main window (pixels/sec)
         self.trajectory_points = []
         self.time_points = []  # Points at each second
+        self.setMouseTracking(True)  # Enable mouse tracking for better interaction
         
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
-            # Set center point
+            # Clear previous trajectory and set new center point
             self.center_point = event.pos()
+            self.current_point = None
+            self.last_angle = None
+            self.last_power = None
+            self.trajectory_points = []
+            self.time_points = []
             self.update()
         elif event.button() == Qt.LeftButton and self.center_point:
             # Start trajectory calculation
@@ -45,6 +53,15 @@ class TransparentCanvas(QWidget):
             
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
+            # Store the last angle and power before clearing current point
+            if self.center_point and self.current_point:
+                dx = self.current_point.x() - self.center_point.x()
+                dy = self.current_point.y() - self.center_point.y()
+                self.last_angle = math.atan2(-dy, dx)
+                
+                distance = math.sqrt(dx * dx + dy * dy)
+                self.last_power = min(100, (distance / self.max_radius * 100) if self.max_radius else 100)
+            
             self.current_point = None
             self.update()
             
@@ -141,10 +158,35 @@ class TransparentCanvas(QWidget):
             painter.setPen(QPen(QColor(255, 0, 0, 255), 8))  # Larger red dot
             painter.drawPoint(self.center_point)
         
-        # Draw power line if both points are set
-        if self.center_point and self.current_point:
-            painter.setPen(QPen(QColor(255, 255, 0, 200), 2))
-            painter.drawLine(self.center_point, self.current_point)
+        # Draw helper lines if we have a center point and either current point or last angle
+        if self.center_point and (self.current_point or self.last_angle is not None):
+            if self.current_point:
+                # Calculate current angle and power
+                dx = self.current_point.x() - self.center_point.x()
+                dy = self.current_point.y() - self.center_point.y()
+                angle = math.atan2(-dy, dx)
+                distance = math.sqrt(dx * dx + dy * dy)
+                power = min(100, (distance / self.max_radius * 100) if self.max_radius else 100)
+            else:
+                # Use last stored angle and power
+                angle = self.last_angle
+                power = self.last_power
+            
+            # Draw radius line (red)
+            painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
+            end_x = self.center_point.x() + math.cos(angle) * (self.max_radius or 200)
+            end_y = self.center_point.y() - math.sin(angle) * (self.max_radius or 200)
+            painter.drawLine(self.center_point, QPointF(end_x, end_y))
+            
+            # Draw power circle (red, smaller than max radius)
+            radius = (self.max_radius or 200) * (power / 100)
+            painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
+            painter.drawEllipse(self.center_point, radius, radius)
+            
+            # Draw power line (yellow)
+            if self.current_point:
+                painter.setPen(QPen(QColor(255, 255, 0, 200), 2))
+                painter.drawLine(self.center_point, self.current_point)
         
         # Draw trajectory
         if self.trajectory_points:
@@ -153,10 +195,22 @@ class TransparentCanvas(QWidget):
             for i in range(len(self.trajectory_points) - 1):
                 painter.drawLine(self.trajectory_points[i], self.trajectory_points[i + 1])
             
-            # Draw time points
-            painter.setPen(QPen(QColor(0, 0, 255, 200), 4))
-            for point in self.time_points:
+            # Draw time points with larger dots and labels
+            painter.setPen(QPen(QColor(0, 0, 255, 200), 8))
+            font = painter.font()
+            font.setPointSize(10)
+            painter.setFont(font)
+            
+            for i, point in enumerate(self.time_points):
+                # Draw larger point
                 painter.drawPoint(point)
+                
+                # Draw time label
+                painter.drawText(
+                    int(point.x()) + 10,
+                    int(point.y()) - 10,
+                    f"{i+1}s"
+                )
     
     def set_parameters(self, max_radius, gravity, max_velocity):
         self.max_radius = max_radius
@@ -184,9 +238,13 @@ class AimerTool(QMainWindow):
         # Set window flags
         self.setWindowFlags(
             Qt.WindowStaysOnTopHint |
-            Qt.FramelessWindowHint
+            Qt.FramelessWindowHint |
+            Qt.WindowMaximizeButtonHint  # Allow maximize
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        # Enable resizing
+        self.setMinimumSize(800, 600)  # Set minimum window size
         
         # Create main widget and layout
         main_widget = QWidget()
@@ -228,6 +286,9 @@ class AimerTool(QMainWindow):
             QPushButton:hover {
                 background-color: rgba(255, 0, 0, 180);
             }
+            QPushButton#maximizeBtn:hover {
+                background-color: rgba(0, 255, 0, 180);
+            }
         """)
         title_bar.setFixedHeight(30)
         
@@ -238,6 +299,13 @@ class AimerTool(QMainWindow):
         title_label = QLabel('Aimer Tool')
         title_label.setStyleSheet('color: white; font-weight: bold;')
         title_layout.addWidget(title_label)
+        
+        # Add maximize button
+        maximize_button = QPushButton('□')
+        maximize_button.setObjectName('maximizeBtn')
+        maximize_button.setFixedSize(30, 30)
+        maximize_button.clicked.connect(self.toggle_maximize)
+        title_layout.addWidget(maximize_button)
         
         # Add close button
         close_button = QPushButton('×')
@@ -343,6 +411,12 @@ class AimerTool(QMainWindow):
         # Initialize canvas parameters
         self.update_parameters()
         
+    def toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+    
     def update_wind_label(self):
         value = self.wind_slider.value()
         direction = "←" if value < 0 else "→" if value > 0 else "-"

@@ -372,15 +372,17 @@ class AimerTool(QMainWindow):
         
         # Gravity control
         gravity_label = QLabel('Gravity (pixels/sec²):')
-        self.gravity_spin = QSpinBox()
+        self.gravity_spin = QDoubleSpinBox()
         self.gravity_spin.setRange(1, 1000)
-        self.gravity_spin.setValue(4)
+        self.gravity_spin.setValue(4.0)
+        self.gravity_spin.setDecimals(2)
+        self.gravity_spin.setSingleStep(0.01)
         
         # Initial velocity control
         velocity_label = QLabel('100% Power Velocity (pixels/sec):')
         self.velocity_spin = QSpinBox()
         self.velocity_spin.setRange(1, 1000)
-        self.velocity_spin.setValue(98)
+        self.velocity_spin.setValue(95)
         
         # Drawing radius control
         radius_label = QLabel('Drawing Radius (px):')
@@ -398,9 +400,9 @@ class AimerTool(QMainWindow):
         wind_accel_label = QLabel('Wind Acceleration (pixels/sec²):')
         self.wind_accel_spin = QDoubleSpinBox()
         self.wind_accel_spin.setRange(0, 100)
-        self.wind_accel_spin.setValue(5)
-        self.wind_accel_spin.setDecimals(1)
-        self.wind_accel_spin.setSingleStep(0.5)
+        self.wind_accel_spin.setValue(0.49)
+        self.wind_accel_spin.setDecimals(2)
+        self.wind_accel_spin.setSingleStep(0.01)
         
         # Wind value label
         self.wind_value_label = QLabel('Wind: 0')

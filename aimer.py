@@ -2,15 +2,15 @@ import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QComboBox, QSlider, QSpinBox,
                              QPushButton)
-from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtCore import Qt, QPoint, QPointF
 from PyQt5.QtGui import QPainter, QPen, QColor
+import math
 
 class TransparentCanvas(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAutoFillBackground(False)
-        self.trajectory_points = []
         self.setMinimumSize(100, 100)
         self.setStyleSheet("""
             QWidget {
@@ -19,6 +19,110 @@ class TransparentCanvas(QWidget):
             }
         """)
         
+        # Initialize variables
+        self.center_point = None
+        self.current_point = None
+        self.max_radius = None  # Will be set from main window
+        self.gravity = 10      # Will be set from main window (pixels/sec^2)
+        self.max_velocity = 100 # Will be set from main window (pixels/sec)
+        self.trajectory_points = []
+        self.time_points = []  # Points at each second
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            # Set center point
+            self.center_point = event.pos()
+            self.update()
+        elif event.button() == Qt.LeftButton and self.center_point:
+            # Start trajectory calculation
+            self.current_point = event.pos()
+            self.calculate_trajectory()
+            
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton and self.center_point:
+            self.current_point = event.pos()
+            self.calculate_trajectory()
+            
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.current_point = None
+            self.update()
+            
+    def calculate_power(self):
+        if not self.center_point or not self.current_point:
+            return 0
+        
+        # Calculate distance between center and current point
+        distance = math.sqrt(
+            (self.current_point.x() - self.center_point.x()) ** 2 +
+            (self.current_point.y() - self.center_point.y()) ** 2
+        )
+        
+        # If max_radius is not set, use the distance directly
+        if self.max_radius is None:
+            return 100
+            
+        # If distance is greater than max_radius, return 100% power
+        if distance > self.max_radius:
+            return 100
+            
+        # Calculate power percentage (0-100)
+        power = (distance / self.max_radius) * 100
+        return power
+        
+    def calculate_angle(self):
+        if not self.center_point or not self.current_point:
+            return 0
+            
+        # Calculate angle in radians
+        dx = self.current_point.x() - self.center_point.x()
+        dy = self.center_point.y() - self.current_point.y()  # Inverted Y axis
+        angle = math.atan2(dy, dx)
+        return angle
+        
+    def calculate_trajectory(self):
+        if not self.center_point or not self.current_point:
+            return
+            
+        power = self.calculate_power()
+        angle = self.calculate_angle()
+        
+        # Initial velocity based on power percentage
+        v0 = (power / 100) * self.max_velocity
+        
+        # Initial velocity components
+        v0x = v0 * math.cos(angle)
+        v0y = v0 * math.sin(angle)
+        
+        # Calculate points
+        points = []
+        time_points = []
+        t = 0
+        x0 = self.center_point.x()
+        y0 = self.center_point.y()
+        
+        while True:
+            # Calculate position at time t
+            x = x0 + v0x * t
+            y = y0 - (v0y * t - 0.5 * self.gravity * t * t)  # Subtract because Y is inverted
+            
+            # Check if point is within canvas
+            if x < 0 or x > self.width() or y < 0 or y > self.height():
+                break
+                
+            point = QPointF(x, y)
+            points.append(point)
+            
+            # Store points at each second for the first 6 seconds
+            if t % 1 == 0 and len(time_points) < 6:
+                time_points.append(point)
+                
+            t += 0.1  # Time step
+            
+        self.trajectory_points = points
+        self.time_points = time_points
+        self.update()
+        
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -26,18 +130,40 @@ class TransparentCanvas(QWidget):
         # Draw frosted glass effect background
         painter.fillRect(self.rect(), QColor(255, 255, 255, 40))
         
-        # Set pen for trajectory
-        pen = QPen(QColor(255, 0, 0, 200))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        
-        # Draw trajectory points
-        for point in self.trajectory_points:
-            painter.drawPoint(point)
+        # Draw center point and radius circle if center is set
+        if self.center_point:
+            # Draw max radius circle first (so it's behind the center point)
+            painter.setPen(QPen(QColor(0, 0, 139, 180), 2))  # Dark blue, slightly thicker
+            if self.max_radius:
+                painter.drawEllipse(self.center_point, self.max_radius, self.max_radius)
             
-    def update_trajectory(self, points):
-        self.trajectory_points = points
-        self.update()
+            # Draw center point on top
+            painter.setPen(QPen(QColor(255, 0, 0, 255), 8))  # Larger red dot
+            painter.drawPoint(self.center_point)
+        
+        # Draw power line if both points are set
+        if self.center_point and self.current_point:
+            painter.setPen(QPen(QColor(255, 255, 0, 200), 2))
+            painter.drawLine(self.center_point, self.current_point)
+        
+        # Draw trajectory
+        if self.trajectory_points:
+            # Draw trajectory line
+            painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
+            for i in range(len(self.trajectory_points) - 1):
+                painter.drawLine(self.trajectory_points[i], self.trajectory_points[i + 1])
+            
+            # Draw time points
+            painter.setPen(QPen(QColor(0, 0, 255, 200), 4))
+            for point in self.time_points:
+                painter.drawPoint(point)
+    
+    def set_parameters(self, max_radius, gravity, max_velocity):
+        self.max_radius = max_radius
+        self.gravity = gravity
+        self.max_velocity = max_velocity
+        if self.center_point and self.current_point:
+            self.calculate_trajectory()
 
 class AimerTool(QMainWindow):
     def __init__(self):
@@ -148,22 +274,22 @@ class AimerTool(QMainWindow):
         self.res_combo.addItems(['1920x1440', '1600x900', '1366x768', '1280x720'])
         
         # Gravity control
-        gravity_label = QLabel('Gravity (m/s²):')
+        gravity_label = QLabel('Gravity (pixels/sec²):')
         self.gravity_spin = QSpinBox()
-        self.gravity_spin.setRange(1, 100)
-        self.gravity_spin.setValue(9)
+        self.gravity_spin.setRange(1, 1000)
+        self.gravity_spin.setValue(4)
         
         # Initial velocity control
-        velocity_label = QLabel('100% Power Velocity (m/s):')
+        velocity_label = QLabel('100% Power Velocity (pixels/sec):')
         self.velocity_spin = QSpinBox()
         self.velocity_spin.setRange(1, 1000)
-        self.velocity_spin.setValue(100)
+        self.velocity_spin.setValue(98)
         
         # Drawing radius control
         radius_label = QLabel('Drawing Radius (px):')
         self.radius_spin = QSpinBox()
-        self.radius_spin.setRange(1, 50)
-        self.radius_spin.setValue(5)
+        self.radius_spin.setRange(1, 9999)
+        self.radius_spin.setValue(280)
         
         # Wind control
         wind_label = QLabel('Wind Direction and Power:')
@@ -203,9 +329,13 @@ class AimerTool(QMainWindow):
         
         # Connect signals
         self.res_combo.currentTextChanged.connect(self.update_canvas_size)
-        self.wind_slider.valueChanged.connect(self.update_trajectory)
-        self.gravity_spin.valueChanged.connect(self.update_trajectory)
-        self.velocity_spin.valueChanged.connect(self.update_trajectory)
+        self.gravity_spin.valueChanged.connect(self.update_parameters)
+        self.velocity_spin.valueChanged.connect(self.update_parameters)
+        self.radius_spin.valueChanged.connect(self.update_parameters)
+        self.wind_slider.valueChanged.connect(self.update_parameters)
+        
+        # Initialize canvas parameters
+        self.update_parameters()
         
     def update_canvas_size(self, resolution):
         width, height = map(int, resolution.split('x'))
@@ -215,9 +345,13 @@ class AimerTool(QMainWindow):
         controls_width = 200  # Fixed width for controls panel
         self.setFixedSize(width + controls_width + 20, height + 20)  # Add some padding
         
-    def update_trajectory(self):
-        # TODO: Implement trajectory calculation based on physics
-        pass
+    def update_parameters(self):
+        # Update canvas parameters
+        self.canvas.set_parameters(
+            max_radius=self.radius_spin.value(),
+            gravity=self.gravity_spin.value(),
+            max_velocity=self.velocity_spin.value()
+        )
 
 def main():
     app = QApplication(sys.argv)

@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QSlider, QSpinBox,
+                             QHBoxLayout, QLabel, QSlider, QSpinBox, QDoubleSpinBox,
                              QPushButton, QSplitter, QDesktopWidget)
 from PyQt5.QtCore import Qt, QPoint, QPointF
 from PyQt5.QtGui import QPainter, QPen, QColor
@@ -29,6 +29,9 @@ class TransparentCanvas(QWidget):
         self.max_radius = None  # Will be set from main window
         self.gravity = 10      # Will be set from main window (pixels/sec^2)
         self.max_velocity = 100 # Will be set from main window (pixels/sec)
+        self.ticks_per_second = 30  # Will be set from main window
+        self.wind_power = 0    # Will be set from main window (-10 to 10)
+        self.wind_accel = 5    # Will be set from main window (pixels/sec^2)
         self.trajectory_points = []
         self.time_points = []  # Points at each second
         self.setMouseTracking(True)  # Enable mouse tracking for better interaction
@@ -125,8 +128,16 @@ class TransparentCanvas(QWidget):
         y0 = self.center_point.y()
         
         # Keep calculating points until trajectory goes out of bounds
+        tick = 0
         while True:
-            x = x0 + v0x * t
+            # Convert game ticks to seconds for physics calculation
+            t = tick / self.ticks_per_second
+            
+            # Calculate wind effect (wind_power * wind_accel gives acceleration in pixels/sec^2)
+            wind_ax = self.wind_power * self.wind_accel
+            
+            # Add wind effect to x position (1/2 * a * t^2 for constant acceleration)
+            x = x0 + v0x * t + 0.5 * wind_ax * t * t
             y = y0 - (v0y * t - 0.5 * self.gravity * t * t)  # Subtract because Y is inverted
             
             # Check if point is out of bounds
@@ -136,11 +147,11 @@ class TransparentCanvas(QWidget):
             point = QPointF(x, y)
             points.append(point)
             
-            # Store points at each second for the first 6 seconds
-            if abs(t % 1.0) < 0.05 and len(time_points) < 6:  # Use 0.05 to handle floating point imprecision
+            # Store points at each second (every ticks_per_second ticks)
+            if tick % self.ticks_per_second == 0 and len(time_points) < 6:
                 time_points.append(point)
-            
-            t += dt
+                
+            tick += 1
         
         self.trajectory_points = points
         self.time_points = time_points
@@ -218,10 +229,13 @@ class TransparentCanvas(QWidget):
                     f"{i+1}s"
                 )
     
-    def set_parameters(self, max_radius, gravity, max_velocity):
+    def set_parameters(self, max_radius, gravity, max_velocity, ticks_per_second, wind_power, wind_accel):
         self.max_radius = max_radius
         self.gravity = gravity
         self.max_velocity = max_velocity
+        self.ticks_per_second = ticks_per_second
+        self.wind_power = wind_power
+        self.wind_accel = wind_accel
         if self.center_point and self.current_point:
             self.calculate_trajectory()
 
@@ -377,10 +391,26 @@ class AimerTool(QMainWindow):
         self.wind_slider.setRange(-10, 10)
         self.wind_slider.setValue(0)
         
+        # Wind acceleration control
+        wind_accel_label = QLabel('Wind Acceleration (pixels/sec²):')
+        self.wind_accel_spin = QDoubleSpinBox()
+        self.wind_accel_spin.setRange(0, 100)
+        self.wind_accel_spin.setValue(5)
+        self.wind_accel_spin.setDecimals(1)
+        self.wind_accel_spin.setSingleStep(0.5)
+        
         # Wind value label
         self.wind_value_label = QLabel('Wind: 0')
         self.wind_value_label.setAlignment(Qt.AlignCenter)
         self.wind_slider.valueChanged.connect(self.update_wind_label)
+        
+        # Game tick control
+        tick_label = QLabel('Game Ticks per Second:')
+        self.tick_spin = QDoubleSpinBox()
+        self.tick_spin.setRange(1, 9999)
+        self.tick_spin.setValue(30)
+        self.tick_spin.setDecimals(1)
+        self.tick_spin.setSingleStep(0.5)
         
         # Add all controls to layout
         controls_layout.addWidget(gravity_label)
@@ -389,8 +419,12 @@ class AimerTool(QMainWindow):
         controls_layout.addWidget(self.velocity_spin)
         controls_layout.addWidget(radius_label)
         controls_layout.addWidget(self.radius_spin)
+        controls_layout.addWidget(tick_label)
+        controls_layout.addWidget(self.tick_spin)
         controls_layout.addWidget(wind_label)
         controls_layout.addWidget(self.wind_slider)
+        controls_layout.addWidget(wind_accel_label)
+        controls_layout.addWidget(self.wind_accel_spin)
         controls_layout.addWidget(self.wind_value_label)
         controls_layout.addStretch()
         
@@ -433,7 +467,10 @@ class AimerTool(QMainWindow):
         self.canvas.set_parameters(
             max_radius=self.radius_spin.value(),
             gravity=self.gravity_spin.value(),
-            max_velocity=self.velocity_spin.value()
+            max_velocity=self.velocity_spin.value(),
+            ticks_per_second=self.tick_spin.value(),
+            wind_power=self.wind_slider.value(),
+            wind_accel=self.wind_accel_spin.value()
         )
 
 def main():

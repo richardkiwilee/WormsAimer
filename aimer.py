@@ -6,6 +6,8 @@ from PyQt5.QtCore import Qt, QPoint, QPointF
 from PyQt5.QtGui import QPainter, QPen, QColor
 import math
 
+LEFT_SPACE = 400
+
 class TransparentCanvas(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -101,13 +103,16 @@ class TransparentCanvas(QWidget):
         if not self.center_point or not self.current_point:
             return
             
+        # Calculate angle and initial velocity
+        dx = self.current_point.x() - self.center_point.x()
+        dy = self.current_point.y() - self.center_point.y()
+        angle = math.atan2(-dy, dx)  # Negative because y is inverted in screen coordinates
+        
+        # Calculate power (0-100%)
         power = self.calculate_power()
-        angle = self.calculate_angle()
         
-        # Initial velocity based on power percentage
-        v0 = (power / 100) * self.max_velocity
-        
-        # Initial velocity components
+        # Calculate initial velocity components
+        v0 = self.max_velocity * (power / 100)
         v0x = v0 * math.cos(angle)
         v0y = v0 * math.sin(angle)
         
@@ -115,15 +120,16 @@ class TransparentCanvas(QWidget):
         points = []
         time_points = []
         t = 0
+        dt = 0.1  # Time step
         x0 = self.center_point.x()
         y0 = self.center_point.y()
         
+        # Keep calculating points until trajectory goes out of bounds
         while True:
-            # Calculate position at time t
             x = x0 + v0x * t
             y = y0 - (v0y * t - 0.5 * self.gravity * t * t)  # Subtract because Y is inverted
             
-            # Check if point is within canvas
+            # Check if point is out of bounds
             if x < 0 or x > self.width() or y < 0 or y > self.height():
                 break
                 
@@ -131,11 +137,11 @@ class TransparentCanvas(QWidget):
             points.append(point)
             
             # Store points at each second for the first 6 seconds
-            if t % 1 == 0 and len(time_points) < 6:
+            if abs(t % 1.0) < 0.05 and len(time_points) < 6:  # Use 0.05 to handle floating point imprecision
                 time_points.append(point)
-                
-            t += 0.1  # Time step
             
+            t += dt
+        
         self.trajectory_points = points
         self.time_points = time_points
         self.update()
@@ -398,9 +404,9 @@ class AimerTool(QMainWindow):
         # Window settings
         self.setWindowTitle('Aimer Tool')
         
-        # Maximize window
+        # Maximize window with left space
         screen = QDesktopWidget().availableGeometry()
-        self.setGeometry(screen)
+        self.setGeometry(LEFT_SPACE, screen.y(), screen.width() - LEFT_SPACE, screen.height())
         
         # Connect signals
         self.gravity_spin.valueChanged.connect(self.update_parameters)

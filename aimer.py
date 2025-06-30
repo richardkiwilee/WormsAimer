@@ -122,51 +122,54 @@ class TransparentCanvas(QWidget):
         # Calculate points
         points = []
         time_points = []
-        t = 0
-        dt = 0.1  # Time step
+        dt = 0.02  # 更小的时间步长以获得更平滑的轨迹
         x0 = self.center_point.x()
         y0 = self.center_point.y()
         
-        # Keep calculating points until trajectory goes out of bounds
-        tick = 0
+        # 计算轨迹点
+        t = 0
         while True:
-            # Convert game ticks to seconds for physics calculation
-            t = tick / self.ticks_per_second
-            
-            # Calculate wind effect (wind_power * wind_accel gives acceleration in pixels/sec^2)
+            # 计算风力效果
             wind_ax = self.wind_power * self.wind_accel
             
-            # Add wind effect to x position (1/2 * a * t^2 for constant acceleration)
+            # 计算位置
             x = x0 + v0x * t + 0.5 * wind_ax * t * t
-            y = y0 - (v0y * t - 0.5 * self.gravity * t * t)  # Subtract because Y is inverted
+            y = y0 - (v0y * t - 0.5 * self.gravity * t * t)  # Y轴反转
             
-            # Calculate vertical velocity at current time
+            # 计算垂直速度
             vy = v0y - self.gravity * t
             going_down = vy < 0
             
-            # Get current canvas size
+            # 获取画布大小
             canvas_height = self.height() if self.height() > 0 else 1000
             canvas_width = self.width() if self.width() > 0 else 1000
             
-            # Check horizontal bounds first
+            # 检查水平边界
             if x < 0 or x > canvas_width:
                 break
                 
-            # Create point and add it to trajectory
+            # 添加轨迹点
             point = QPointF(x, y)
             points.append(point)
             
-            # Store points at each second (every ticks_per_second ticks)
-            # Only store time points that are visible in the canvas
-            if tick % self.ticks_per_second == 0 and len(time_points) < 6:
-                if 0 <= y <= canvas_height:  # Only add time points if they're visible
-                    time_points.append(point)
+            t += dt
+            
+            # 检查是否超出底部边界
+            if going_down and y > canvas_height:
+                break
+        
+        # 直接计算6个时间点的位置
+        for i in range(1, 7):
+            t = i * self.ticks_per_second  # 实际物理时间
+            x = x0 + v0x * t + 0.5 * wind_ax * t * t
+            y = y0 - (v0y * t - 0.5 * self.gravity * t * t)
+            time_points.append(QPointF(x, y))
             
             # Check if we should stop - only when going down and below bottom
-            if y > canvas_height and going_down:
+            if going_down and y > canvas_height:
                 break
                 
-            tick += 1
+            t += dt
         
         self.trajectory_points = points
         self.time_points = time_points
@@ -228,16 +231,12 @@ class TransparentCanvas(QWidget):
                 painter.drawLine(self.trajectory_points[i], self.trajectory_points[i + 1])
             
             # Draw time points with larger dots and labels
-            painter.setPen(QPen(QColor(0, 0, 255, 200), 8))
-            font = painter.font()
-            font.setPointSize(10)
-            painter.setFont(font)
-            
-            for i, point in enumerate(self.time_points):
+            painter.setPen(QPen(QColor(255, 0, 0), 4))
+            for i, point in enumerate(self.time_points[:6]):  # 只绘制前6个时间点
                 # Draw larger point
                 painter.drawPoint(point)
                 
-                # Draw time label
+                # Draw time label with actual game time
                 painter.drawText(
                     int(point.x()) + 10,
                     int(point.y()) - 10,
@@ -408,13 +407,13 @@ class AimerTool(QMainWindow):
         self.wind_value_label.setAlignment(Qt.AlignCenter)
         self.wind_slider.valueChanged.connect(self.update_wind_label)
         
-        # Game tick control
-        tick_label = QLabel('Game Ticks per Second:')
+        # Time scale control
+        tick_label = QLabel('引线1秒=逻辑秒数:')
         self.tick_spin = QDoubleSpinBox()
-        self.tick_spin.setRange(1, 9999)
-        self.tick_spin.setValue(30)
-        self.tick_spin.setDecimals(1)
-        self.tick_spin.setSingleStep(0.5)
+        self.tick_spin.setRange(0.1, 100)
+        self.tick_spin.setValue(7.0)
+        self.tick_spin.setDecimals(2)
+        self.tick_spin.setSingleStep(0.01)
         
         # Add all controls to layout
         controls_layout.addWidget(gravity_label)
@@ -507,6 +506,8 @@ class AimerTool(QMainWindow):
         self.velocity_spin.valueChanged.connect(self.update_parameters)
         self.radius_spin.valueChanged.connect(self.update_parameters)
         self.wind_slider.valueChanged.connect(self.update_parameters)
+        self.tick_spin.valueChanged.connect(self.update_parameters)
+        self.wind_accel_spin.valueChanged.connect(self.update_parameters)
         
         # Initialize canvas parameters
         self.update_parameters()

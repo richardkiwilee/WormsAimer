@@ -10,14 +10,20 @@ class TransparentCanvas(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAutoFillBackground(False)
         self.trajectory_points = []
-        self.setMinimumSize(100, 100)  # Set minimum size to ensure visibility
+        self.setMinimumSize(100, 100)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: rgba(255, 255, 255, 40);
+                border-radius: 10px;
+            }
+        """)
         
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Draw background with semi-transparent color to make canvas visible
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 30))
+        # Draw frosted glass effect background
+        painter.fillRect(self.rect(), QColor(255, 255, 255, 40))
         
         # Set pen for trajectory
         pen = QPen(QColor(255, 0, 0, 200))
@@ -38,14 +44,19 @@ class AimerTool(QMainWindow):
         self.initUI()
         
     def initUI(self):
-        # Set window flags to prevent resizing
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.MSWindowsFixedSizeDialogHint)
+        # Set window flags
+        self.setWindowFlags(
+            Qt.WindowStaysOnTopHint |
+            Qt.FramelessWindowHint  # Remove window frame for better look
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
         
         # Create main widget and layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QHBoxLayout(main_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 10, 10, 10)  # Add some padding
+        layout.setSpacing(10)  # Space between canvas and controls
         
         # Left side - Transparent Canvas
         self.canvas = TransparentCanvas()
@@ -53,6 +64,22 @@ class AimerTool(QMainWindow):
         
         # Right side - Controls
         controls_widget = QWidget()
+        controls_widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(255, 255, 255, 180);
+                border-radius: 10px;
+            }
+            QLabel {
+                color: black;
+                font-weight: bold;
+            }
+            QSpinBox, QComboBox, QSlider {
+                background-color: rgba(255, 255, 255, 220);
+                border: 1px solid gray;
+                border-radius: 4px;
+                padding: 2px;
+            }
+        """)
         controls_layout = QVBoxLayout(controls_widget)
         
         # Resolution selector

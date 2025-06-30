@@ -389,25 +389,12 @@ class AimerTool(QMainWindow):
         title_bar.setFixedHeight(30)
         
         title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(10, 0, 0, 0)
+        title_layout.setContentsMargins(10, 0, 10, 0)
         
         # Add title label
         title_label = QLabel('Aimer Tool')
         title_label.setStyleSheet('color: white; font-weight: bold;')
         title_layout.addWidget(title_label)
-        
-        # Add maximize button
-        maximize_button = QPushButton('□')
-        maximize_button.setObjectName('maximizeBtn')
-        maximize_button.setFixedSize(30, 30)
-        maximize_button.clicked.connect(self.toggle_maximize)
-        title_layout.addWidget(maximize_button)
-        
-        # Add close button
-        close_button = QPushButton('×')
-        close_button.setFixedSize(30, 30)
-        close_button.clicked.connect(self.close)
-        title_layout.addWidget(close_button)
         
         main_layout.addWidget(title_bar)
         
@@ -418,6 +405,7 @@ class AimerTool(QMainWindow):
         
         # Left side - Controls
         controls_widget = QWidget()
+        self.controls_widget = controls_widget  # Store reference for later use
         controls_widget.setStyleSheet("""
             QWidget {
                 background-color: rgba(255, 255, 255, 180);
@@ -504,6 +492,50 @@ class AimerTool(QMainWindow):
         controls_layout.addWidget(self.wind_value_label)
         controls_layout.addStretch()
         
+        # Add toggle canvas button
+        toggle_canvas_button = QPushButton('收起 Canvas')
+        toggle_canvas_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4a90e2;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #357abd;
+            }
+            QPushButton:pressed {
+                background-color: #2a5f9e;
+            }
+        """)
+        toggle_canvas_button.clicked.connect(self.toggle_canvas)
+        controls_layout.addWidget(toggle_canvas_button)
+        self.toggle_canvas_button = toggle_canvas_button
+        
+        # Add exit button
+        exit_button = QPushButton('退出')
+        exit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+            QPushButton:pressed {
+                background-color: #a93226;
+            }
+        """)
+        exit_button.clicked.connect(self.close)
+        controls_layout.addWidget(exit_button)
+        
         # Set initial sizes for splitter
         splitter.setStretchFactor(0, 0)  # Controls keep their size
         splitter.setStretchFactor(1, 1)  # Canvas gets all extra space
@@ -566,11 +598,38 @@ class AimerTool(QMainWindow):
         self.resize_edge = edge
         return edge
         
-    def toggle_maximize(self):
-        if self.isMaximized():
-            self.showNormal()
+    def toggle_canvas(self):
+        current_geometry = self.geometry()
+        if self.canvas.isVisible():
+            # 保存当前窗口状态
+            self.last_window_geometry = self.geometry()
+            # 隐藏canvas
+            self.canvas.hide()
+            self.toggle_canvas_button.setText('展开 Canvas')
+            
+            # 获取控件栏的实际大小
+            controls_size = self.controls_widget.sizeHint()
+            # 调整窗口宽度为控件栏宽度，保持高度不变
+            new_width = controls_size.width() + 20  # 边框的额外空间
+            
+            # 保持当前位置不变，只改变宽度
+            self.setGeometry(current_geometry.x(), current_geometry.y(), 
+                            new_width, current_geometry.height())
         else:
-            self.showMaximized()
+            # 显示canvas
+            self.canvas.show()
+            self.toggle_canvas_button.setText('收起 Canvas')
+            # 恢复之前的窗口状态，但保持当前位置
+            if hasattr(self, 'last_window_geometry'):
+                self.setGeometry(current_geometry.x(), current_geometry.y(),
+                                self.last_window_geometry.width(), 
+                                self.last_window_geometry.height())
+            else:
+                # 如果没有保存的状态，使用默认大小但保持当前位置
+                default_width = self.controls_widget.width() + 2560
+                default_height = 1440
+                self.setGeometry(current_geometry.x(), current_geometry.y(),
+                                default_width, default_height)
     
     def update_wind_label(self):
         value = self.wind_slider.value()

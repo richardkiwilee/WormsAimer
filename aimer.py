@@ -1,6 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QComboBox, QSlider, QSpinBox)
+                             QHBoxLayout, QLabel, QComboBox, QSlider, QSpinBox,
+                             QPushButton)
 from PyQt5.QtCore import Qt, QPoint
 from PyQt5.QtGui import QPainter, QPen, QColor
 
@@ -42,25 +43,84 @@ class AimerTool(QMainWindow):
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.oldPos = None
+        
+    def mousePressEvent(self, event):
+        self.oldPos = event.globalPos()
+
+    def mouseMoveEvent(self, event):
+        if self.oldPos:
+            delta = event.globalPos() - self.oldPos
+            self.move(self.pos() + delta)
+            self.oldPos = event.globalPos()
         
     def initUI(self):
         # Set window flags
         self.setWindowFlags(
             Qt.WindowStaysOnTopHint |
-            Qt.FramelessWindowHint  # Remove window frame for better look
+            Qt.FramelessWindowHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         
         # Create main widget and layout
         main_widget = QWidget()
+        main_widget.setStyleSheet("""
+            QWidget#mainWidget {
+                background-color: rgba(255, 255, 255, 180);
+                border: 2px solid rgba(0, 0, 0, 100);
+                border-radius: 10px;
+            }
+        """)
+        main_widget.setObjectName("mainWidget")
         self.setCentralWidget(main_widget)
-        layout = QHBoxLayout(main_widget)
-        layout.setContentsMargins(10, 10, 10, 10)  # Add some padding
-        layout.setSpacing(10)  # Space between canvas and controls
+        
+        # Create main vertical layout
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add title bar
+        title_bar = QWidget()
+        title_bar.setStyleSheet("""
+            QWidget {
+                background-color: rgba(60, 60, 60, 180);
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+            }
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0);
+                border: none;
+                color: white;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 0, 0, 180);
+            }
+        """)
+        title_bar.setFixedHeight(30)
+        
+        title_layout = QHBoxLayout(title_bar)
+        title_layout.setContentsMargins(10, 0, 0, 0)
+        
+        # Add title label
+        title_label = QLabel('Aimer Tool')
+        title_label.setStyleSheet('color: white; font-weight: bold;')
+        title_layout.addWidget(title_label)
+        
+        # Add close button
+        close_button = QPushButton('×')
+        close_button.setFixedSize(30, 30)
+        close_button.clicked.connect(self.close)
+        title_layout.addWidget(close_button)
+        
+        main_layout.addWidget(title_bar)
+        
+        # Create content layout
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(10)
         
         # Left side - Transparent Canvas
         self.canvas = TransparentCanvas()
-        layout.addWidget(self.canvas)
         
         # Right side - Controls
         controls_widget = QWidget()
@@ -124,8 +184,16 @@ class AimerTool(QMainWindow):
         controls_layout.addWidget(self.wind_slider)
         controls_layout.addStretch()
         
-        # Add controls to main layout
-        layout.addWidget(controls_widget)
+        # Add controls to content layout
+        content_layout.addWidget(self.canvas)
+        content_layout.addWidget(controls_widget)
+        
+        # Add content layout to main layout
+        main_layout.addLayout(content_layout)
+        
+        # Store layouts as instance variables
+        self.main_layout = main_layout
+        self.content_layout = content_layout
         
         # Window settings
         self.setWindowTitle('Aimer Tool')

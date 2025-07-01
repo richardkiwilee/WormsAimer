@@ -12,3 +12,4 @@ debug
 .env
 log
 .vscode/
+*.spec
